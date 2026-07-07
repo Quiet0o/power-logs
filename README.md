@@ -1,5 +1,3 @@
-Welcome to your new TanStack Start app! 
-
 # Getting Started
 
 To run this application:
