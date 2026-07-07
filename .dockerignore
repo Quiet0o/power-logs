@@ -1,0 +1,15 @@
+node_modules
+.output
+.vinxi
+.tanstack
+dist
+sqlite.db
+.env
+.env.local
+drizzle
+.git
+.gitignore
+README.md
+npm-debug.log
+docker-compose.yml
+Dockerfile
