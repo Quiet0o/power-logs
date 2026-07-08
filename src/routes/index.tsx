@@ -1,8 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useTRPC } from '#/integrations/trpc/react'
-import { useState  } from 'react'
-import type {FormEvent} from 'react';
+import { useState, type FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { authClient } from '#/lib/auth-client'
 import {
   User,
   Mail,
@@ -16,6 +16,10 @@ import {
   Pencil,
   Trash2,
   X,
+  LogOut,
+  LogIn,
+  UserPlus,
+  Shield,
 } from 'lucide-react'
 
 export const Route = createFileRoute('/')({ component: Home })
@@ -23,18 +27,21 @@ export const Route = createFileRoute('/')({ component: Home })
 function Home() {
   const trpc = useTRPC()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
 
-  // Queries & Mutations
-  const {
-    data: userList,
-    isLoading,
-    error,
-  } = useQuery(trpc.users.list.queryOptions())
+  // Auth session query
+  const { data: session, isPending: isSessionLoading } =
+    authClient.useSession()
+
+  // Queries & Mutations for users list CRUD
+  const { data: userList, isLoading: isListLoading, error } = useQuery({
+    ...trpc.users.list.queryOptions(),
+    enabled: !!session, // only run query if logged in
+  })
 
   const addUserMutation = useMutation(
     trpc.users.add.mutationOptions({
       onSuccess: () => {
-        // Invalidate users list query to reload it
         queryClient.invalidateQueries({
           queryKey: trpc.users.list.queryKey(),
         })
@@ -44,7 +51,6 @@ function Home() {
         setTimeout(() => setFormSuccess(null), 5000)
       },
       onError: (err: any) => {
-        console.log(err)
         setFormError(
           err.message || 'Wystąpił błąd podczas dodawania użytkownika.',
         )
@@ -128,11 +134,7 @@ function Home() {
     }
   }
 
-  const handleEditClick = (user: {
-    id: number
-    name: string
-    email: string
-  }) => {
+  const handleEditClick = (user: { id: number; name: string; email: string }) => {
     setEditingUserId(user.id)
     setName(user.name)
     setEmail(user.email)
@@ -154,11 +156,81 @@ function Home() {
     }
   }
 
+  const handleLogout = async () => {
+    await authClient.signOut()
+    navigate({ to: '/' })
+  }
+
   const isPending =
     addUserMutation.isPending ||
     updateUserMutation.isPending ||
     deleteUserMutation.isPending
 
+  // Full-page session loader
+  if (isSessionLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 text-slate-400 dark:text-slate-500">
+        <Loader2 className="w-10 h-10 animate-spin text-emerald-500" />
+        <p className="text-sm font-semibold">Sprawdzanie sesji użytkownika...</p>
+      </div>
+    )
+  }
+
+  // Not Logged In Landing Page
+  if (!session) {
+    return (
+      <div className="page-wrap py-20 px-4 min-h-screen flex items-center justify-center">
+        <div className="island-shell p-8 md:p-12 rounded-3xl w-full max-w-2xl text-center relative overflow-hidden">
+          {/* Decorative background glows */}
+          <div className="absolute -top-16 -right-16 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="island-kicker mb-3 flex items-center justify-center gap-2">
+            <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>Power Logs & Better Auth</span>
+          </div>
+
+          <h1 className="text-4xl md:text-5xl font-extrabold display-title tracking-tight text-slate-900 dark:text-white mb-4">
+            System Zarządzania Użytkownikami
+          </h1>
+
+          <p className="text-slate-600 dark:text-slate-400 text-lg max-w-lg mx-auto mb-8">
+            Dostęp do bazy danych i panelu administracyjnego wymaga uwierzytelnienia. Zaloguj się lub utwórz nowe konto.
+          </p>
+
+          <div className="flex flex-col sm:flex-row gap-4 justify-center max-w-sm mx-auto">
+            <Link
+              to="/login"
+              className="py-3 px-6 rounded-xl bg-emerald-600 text-white! font-semibold flex items-center justify-center gap-2 shadow-lg cursor-pointer active:scale-98 transition-all flex-1 text-sm"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Zaloguj się</span>
+            </Link>
+            <Link
+              to="/register"
+              className="py-3 px-6 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50 text-slate-700 dark:text-slate-300 font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer flex-1 text-sm bg-white/50"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Utwórz konto</span>
+            </Link>
+          </div>
+
+          <div className="mt-12 pt-6 border-t border-slate-200/50 dark:border-slate-800/50 text-xs text-slate-400 dark:text-slate-500 flex flex-wrap items-center justify-center gap-4">
+            <div className="flex items-center gap-1">
+              <Database className="w-3.5 h-3.5 text-emerald-600" />
+              <span>SQLite Database</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Shield className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Better Auth Protection</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Logged In Dashboard
   return (
     <div className="page-wrap py-12 px-4 md:py-20 min-h-screen flex flex-col justify-between">
       <div>
@@ -167,25 +239,34 @@ function Home() {
           <div>
             <div className="island-kicker mb-2 flex items-center justify-center md:justify-start gap-2">
               <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>Drizzle ORM + SQLite Demo</span>
+              <span>Zalogowany jako Administrator</span>
             </div>
             <h1 className="text-4xl md:text-5xl font-extrabold display-title tracking-tight text-slate-900 dark:text-white">
               Baza Użytkowników
             </h1>
             <p className="mt-2 text-slate-600 dark:text-slate-400 max-w-lg">
-              Wygodne dodawanie, odczytywanie, edycja oraz usuwanie rekordów w
-              lokalnej bazie SQLite.
+              Wygodne dodawanie, odczytywanie, edycja oraz usuwanie rekordów w lokalnej bazie SQLite.
             </p>
           </div>
 
-          {/* Connection status card */}
-          <div className="self-center md:self-auto flex items-center gap-3 px-4 py-2.5 rounded-full island-shell text-sm font-semibold text-slate-700 dark:text-slate-300">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-            </span>
-            <Database className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span>SQLite: Connected</span>
+          {/* User profile & Actions */}
+          <div className="self-center md:self-auto flex flex-col sm:flex-row items-center gap-4">
+            <div className="flex items-center gap-3 px-4 py-2 rounded-full island-shell text-sm font-semibold text-slate-700 dark:text-slate-300">
+              <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-bold text-xs shrink-0">
+                {session.user.name[0].toUpperCase()}
+              </div>
+              <span className="truncate max-w-[140px]">
+                {session.user.name}
+              </span>
+            </div>
+
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400 text-slate-500 dark:text-slate-400 font-semibold flex items-center gap-2 transition-all cursor-pointer text-sm bg-white/50"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Wyloguj się</span>
+            </button>
           </div>
         </header>
 
@@ -201,9 +282,7 @@ function Home() {
                 {editingUserId !== null ? 'EDYCJA PROFILU' : 'NOWY PROFIL'}
               </div>
               <h2 className="text-2xl font-bold display-title text-slate-800 dark:text-slate-100 mb-6">
-                {editingUserId !== null
-                  ? 'Edytuj Użytkownika'
-                  : 'Dodaj Użytkownika'}
+                {editingUserId !== null ? 'Edytuj Użytkownika' : 'Dodaj Użytkownika'}
               </h2>
 
               <form onSubmit={handleSubmit} className="space-y-5">
@@ -281,11 +360,10 @@ function Home() {
                   <button
                     type="submit"
                     disabled={isPending}
-                    className={`py-3 px-4 rounded-xl text-white font-semibold flex items-center justify-center gap-2 shadow-lg cursor-pointer active:scale-98 transition-all flex-1 ${
-                      editingUserId !== null
-                        ? 'bg-amber-600 hover:bg-amber-500 disabled:bg-amber-600/60 shadow-amber-600/10'
-                        : 'bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/60 shadow-emerald-600/10'
-                    }`}
+                    className={`py-3 px-4 rounded-xl text-white font-semibold flex items-center justify-center gap-2 shadow-lg cursor-pointer active:scale-98 transition-all flex-1 ${editingUserId !== null
+                      ? 'bg-amber-600 hover:bg-amber-500 disabled:bg-amber-600/60 shadow-amber-600/10'
+                      : 'bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/60 shadow-emerald-600/10'
+                      }`}
                   >
                     {isPending ? (
                       <>
@@ -328,12 +406,10 @@ function Home() {
               </div>
 
               {/* Loader */}
-              {isLoading && (
+              {isListLoading && (
                 <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400 dark:text-slate-500">
                   <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
-                  <p className="text-sm font-medium">
-                    Wczytywanie użytkowników...
-                  </p>
+                  <p className="text-sm font-medium">Wczytywanie użytkowników...</p>
                 </div>
               )}
 
@@ -344,14 +420,13 @@ function Home() {
                     Nie udało się pobrać danych
                   </p>
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {error.message ||
-                      'Wystąpił nieoczekiwany problem z połączeniem.'}
+                    {error.message || 'Wystąpił nieoczekiwany problem z połączeniem.'}
                   </p>
                 </div>
               )}
 
               {/* Empty state */}
-              {!isLoading && !error && (!userList || userList.length === 0) && (
+              {!isListLoading && !error && (!userList || userList.length === 0) && (
                 <div className="py-16 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-6">
                   <div className="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-950/30 flex items-center justify-center mx-auto mb-4 text-emerald-600 dark:text-emerald-400">
                     <Users className="w-6 h-6" />
@@ -360,14 +435,13 @@ function Home() {
                     Brak użytkowników
                   </h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
-                    Wypełnij formularz po lewej stronie, aby dodać swojego
-                    pierwszego użytkownika do bazy danych SQLite.
+                    Wypełnij formularz po lewej stronie, aby dodać swojego pierwszego użytkownika do bazy danych SQLite.
                   </p>
                 </div>
               )}
 
               {/* Users List Grid */}
-              {!isLoading && !error && userList && userList.length > 0 && (
+              {!isListLoading && !error && userList && userList.length > 0 && (
                 <div className="space-y-4 max-h-[480px] overflow-y-auto pr-1">
                   {userList.map(
                     (user: {
@@ -400,7 +474,7 @@ function Home() {
                           </div>
                         </div>
 
-                        {/* Actions & Timestamp wrapper */}
+                        {/* Actions & Description wrapper */}
                         <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0 border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100 dark:border-slate-800/60">
                           {/* Actions */}
                           <div className="flex items-center gap-1">
@@ -428,12 +502,12 @@ function Home() {
                             <span>
                               {user.createdAt
                                 ? new Date(user.createdAt).toLocaleDateString(
-                                    'pl-PL',
-                                    {
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                    },
-                                  )
+                                  'pl-PL',
+                                  {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  },
+                                )
                                 : 'Brak daty'}
                             </span>
                           </div>
@@ -450,9 +524,6 @@ function Home() {
 
       {/* Footer */}
       <footer className="mt-12 pt-6 border-t border-slate-200/50 dark:border-slate-800/50 text-center text-xs text-slate-400 dark:text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-3">
-        <p>
-          © 2026 Antigravity IDE. Stworzono z użyciem TanStack Start + SQLite.
-        </p>
         <div className="flex items-center gap-2">
           <span>Standard bazodanowy:</span>
           <code className="text-[10px]">Drizzle-ORM (better-sqlite3)</code>
